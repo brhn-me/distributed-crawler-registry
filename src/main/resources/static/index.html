@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crawler Nodes</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table, th, td {
+            border: 1px solid black;
+        }
+
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        #refreshingMessage {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+<h2>Distributed Crawler Nodes</h2>
+<table id="nodesTable">
+    <thead>
+    <tr>
+        <th>Node ID</th>
+        <th>Address</th>
+        <th>Port</th>
+        <th>Master</th>
+        <th>Last Heartbeat</th>
+    </tr>
+    </thead>
+    <tbody>
+    <!-- Nodes will be inserted here -->
+    </tbody>
+</table>
+<p id="refreshingMessage" style="display: none;">Refreshing...</p>
+
+<script>
+    function formatLastHeartbeat(lastHeartbeat) {
+        const heartbeatTime = new Date(lastHeartbeat).getTime();
+        const now = new Date().getTime();
+        const differenceInSeconds = Math.floor((now - heartbeatTime) / 1000);
+
+        if (differenceInSeconds < 60) {
+            return `${differenceInSeconds} seconds ago`;
+        } else if (differenceInSeconds < 3600) {
+            const differenceInMinutes = Math.floor(differenceInSeconds / 60);
+            return `${differenceInMinutes} minutes ago`;
+        } else {
+            const differenceInHours = Math.floor(differenceInSeconds / 3600);
+            const remainderMinutes = Math.floor((differenceInSeconds % 3600) / 60);
+
+            let result = `${differenceInHours} hour${differenceInHours > 1 ? 's' : ''} ago`;
+            if (remainderMinutes > 0) {
+                result += `, ${remainderMinutes} minute${remainderMinutes > 1 ? 's' : ''} ago`;
+            }
+            return result;
+        }
+    }
+
+    // function to fetch nodes and update the table
+    async function fetchNodesAndUpdateTable() {
+        const refreshingMessage = document.getElementById('refreshingMessage');
+        refreshingMessage.style.display = 'block';
+
+        try {
+            const response = await fetch('/discover');
+            const nodes = await response.json();
+            const tableBody = document.querySelector('#nodesTable tbody');
+            tableBody.innerHTML = ''; // Clear existing rows
+
+            // create new rows for each node
+            nodes.forEach(node => {
+                const row = tableBody.insertRow();
+                row.insertCell().textContent = node.nodeId;
+                row.insertCell().textContent = node.address;
+                row.insertCell().textContent = node.port;
+                row.insertCell().textContent = node.leader ? 'Yes' : 'No';
+                row.insertCell().textContent = formatLastHeartbeat(node.lastHeartbeat);
+            });
+        } catch (error) {
+            console.error("Failed to fetch nodes:", error);
+        } finally {
+            setTimeout(() => {
+                refreshingMessage.style.display = 'none';
+            }, 1000);
+        }
+    }
+
+    // fetch nodes on page load and every 5 seconds thereafter
+    fetchNodesAndUpdateTable();
+    setInterval(fetchNodesAndUpdateTable, 5000);
+</script>
+</body>
+</html>
