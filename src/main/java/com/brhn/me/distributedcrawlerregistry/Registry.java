@@ -1,8 +1,10 @@
 package com.brhn.me.distributedcrawlerregistry;
 
+import org.slf4j.Logger;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -14,12 +16,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 public class Registry {
-
+    private static final Logger logger = LoggerFactory.getLogger(Registry.class);
     private final Map<String, CrawlerNode> nodes = new ConcurrentHashMap<>();
     private CrawlerNode masterNode = null;
 
     @PostMapping("/register")
     public ResponseEntity<?> registerNode(@RequestBody CrawlerNode node) {
+        logger.info("Registering node with ID: {}", node.getNodeId());
         LocalDateTime now = LocalDateTime.now();
         if (!nodes.containsKey(node.getNodeId())) {
             node.setEntryTime(now);
@@ -27,18 +30,22 @@ public class Registry {
         node.setLastHeartbeat(now);
         nodes.put(node.getNodeId(), node);
         electLeader();
+        logger.info("Registered node with ID: {}", node.getNodeId());
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/deregister")
     public ResponseEntity<?> deregisterNode(@RequestBody String nodeId) {
+        logger.info("De-registering node with ID: {}", nodeId);
         nodes.remove(nodeId);
         electLeader();
+        logger.info("De-registered node with ID: {}", nodeId);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/discover")
     public ResponseEntity<List<CrawlerNode>> discoverNodes() {
+        logger.info("Discovering nodes: {}", nodes.size());
         return ResponseEntity.ok(new ArrayList<>(nodes.values()));
     }
 
@@ -46,22 +53,27 @@ public class Registry {
     public ResponseEntity<?> updateHeartbeat(@RequestBody String nodeId) {
         CrawlerNode node = nodes.get(nodeId);
         if (node != null) {
+            logger.info("Heartbeat from node ID: {}, IP: {}", node.getNodeId(), node.getAddress());
             node.setLastHeartbeat(LocalDateTime.now());
-            String masterNodeId = "";
-            if(this.masterNode != null){
-
-            }
             return ResponseEntity.ok().build();
         }
         electLeader();
+        if (this.masterNode != null) {
+            return ResponseEntity.ok(this.masterNode.getNodeId());
+        }
         return ResponseEntity.notFound().build();
     }
 
     @Scheduled(fixedRate = 5000)
     public void removeStaleNodes() {
         LocalDateTime cutoff = LocalDateTime.now().minus(60, ChronoUnit.SECONDS);
+        int beforeSize = nodes.size();
         nodes.entrySet().removeIf(entry -> entry.getValue().getLastHeartbeat().isBefore(cutoff));
         electLeader();
+        int removedNodesCount = beforeSize - nodes.size();
+        if (removedNodesCount > 0) {
+            logger.info("Removed {} stale node(s)", removedNodesCount);
+        }
     }
 
     private void electLeader() {
@@ -85,6 +97,7 @@ public class Registry {
         if (oldestNode != null) {
             oldestNode.setLeader(true);
             this.masterNode = oldestNode;
+            logger.info("Master node updated to: {}", masterNode.getNodeId());
         }
     }
 
